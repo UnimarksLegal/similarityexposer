@@ -6,3 +6,4 @@ PyMuPDF
 xlsxwriter
 requests
 dotenv
+openpyxl
