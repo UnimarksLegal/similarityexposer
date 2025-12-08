@@ -3,7 +3,7 @@ pandas == 2.2.2
 numpy
 RapidFuzz == 3.14.3
 PyMuPDF == 1.26.6
-xlsxwriter = 3.2.9
+xlsxwriter == 3.2.9
 requests
 dotenv
 openpyxl == 3.1.5
