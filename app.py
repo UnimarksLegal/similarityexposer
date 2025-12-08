@@ -20,7 +20,7 @@ st.caption("Govt Journal × TM-Pilot × Zoho — Similarity Detection Engine")
 st.markdown("---")
 
 # Upload widgets
-col1, col2, col3 = st.columns(3)
+col1, col2, col3,col4 = st.columns(4)
 
 with col1:
     pdf_file_1 = st.file_uploader("Upload Govt PDF 1", type=["pdf"])
@@ -29,6 +29,9 @@ with col2:
     pdf_file_2 = st.file_uploader("Upload Govt PDF 2", type=["pdf"])
 
 with col3:
+    pdf_file_3 = st.file_uploader("Upload Govt PDF 3 (Optional)", type=["pdf"])
+
+with col4:
     tmpilot_file = st.file_uploader("Upload TM-Pilot Full-Download Excel", type=["xlsx", "xls"])
 
 st.markdown("---")
