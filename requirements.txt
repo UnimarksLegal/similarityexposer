@@ -1,9 +1,9 @@
 streamlit
-pandas
+pandas 
 numpy
-rapidfuzz
+rapidfuzz 
 PyMuPDF
 xlsxwriter
 requests
 dotenv
-openpyxl
+openpyxl 
