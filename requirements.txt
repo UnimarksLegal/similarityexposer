@@ -1,9 +1,9 @@
 streamlit
-pandas == 2.2.2
+pandas
 numpy
-RapidFuzz == 3.14.3
-PyMuPDF == 1.26.6
-xlsxwriter == 3.2.9
+RapidFuzz
+PyMuPDF
+xlsxwriter
 requests
 dotenv
-openpyxl == 3.1.5
+openpyxl
