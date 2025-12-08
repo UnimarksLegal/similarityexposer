@@ -1,6 +1,15 @@
 import fitz , re,requests,os
 import pandas as pd
 from dotenv import load_dotenv
+
+def clean_app_no(x):
+    if pd.isna(x):
+        return None
+    s = str(x)
+    m = re.search(r"(\d{7})", s)
+    return m.group(1) if m else None
+
+
 records = []
 def extract_govt_pdf(pdffilename)->pd.DataFrame:
     
@@ -84,10 +93,11 @@ def extract_govt_pdf(pdffilename)->pd.DataFrame:
     govt['goodsAndSerice'] = govt['goodsAndSerice'].fillna('Refer Pdf')
     govt['page_no'] = pd.to_numeric(govt['page_no'], errors='coerce')
     # govt['page_no'] = govt['page_no'].astype('Int64')
-    govt['appno'] = pd.to_numeric(govt['appno'], errors='coerce')
+    govt['appno'] = govt['appno'].apply(clean_app_no)
     govt = govt.dropna()
     print('Govt df Created')
     return govt
+    
 
 def prepare_tmpilot(excel)->pd.DataFrame:
 
@@ -95,7 +105,7 @@ def prepare_tmpilot(excel)->pd.DataFrame:
     needed_cols = ['appno','class', 'tmAppliedFor','buisnessName', 'goodsAndSerice','dateOfApp','propName','country', 'JournalDate']
     # tmpilot['appno'] = tmpilot['appno'].astype('Int64')
     tmpilot = tmpilot[needed_cols]
-    tmpilot['appno'] = pd.to_numeric(tmpilot['appno'], errors='coerce')
+    tmpilot['appno'] = tmpilot['appno'].apply(clean_app_no)
     print('TM-Pilot df Created')
     return tmpilot
 
