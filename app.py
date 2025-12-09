@@ -137,7 +137,7 @@ if start:
     # PREP TM-PILOT DF
     # -----------------------
     with st.spinner("Loading TM-Pilot Excel..."):
-        if tmpilot_file.name.lower().endswith(".csv"):
+        if tmpilot_file.name.lower().endswith(".xlsx"):
             tmpilot_df = prepare_tmpilot(tmpilot_file)
             st.success(f"TM-Pilot DF Created — {len(tmpilot_df):,} rows")
         else:
@@ -152,9 +152,9 @@ if start:
 
     # # Display & download missing records
     # st.markdown("### Missing Records (Govt Not Found in TM-Pilot)")
-    if tmpilot_df.shape[0] == govt_pdf_df.shape[0]:
-        missing = pd.DataFrame(columns=govt_pdf_df.columns)
-        st.success('No Missing values in TM-Pilot')
+    if len(tmpilot_df) >= len(govt_pdf_df):
+        missing = govt_pdf_df[~govt_pdf_df["appno"].isin(tmpilot_df["appno"])]
+        # st.success('No Missing values in TM-Pilot')
     else:
         missing = govt_pdf_df[~govt_pdf_df["appno"].isin(tmpilot_df["appno"])]
     # if missing.shape[0] == 0:
@@ -318,7 +318,7 @@ if matches_df is not None and not matches_df.empty:
     st.download_button(
         "Download Complete Excel",
         data=buf,
-        file_name=f"Similarity_Report_{journal_date}.xlsx",
+        file_name=f"Similarity_Report_for_Jnrl_{journal_date}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 else:
