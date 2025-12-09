@@ -26,7 +26,7 @@ with col1:
     tmpilot_file = st.file_uploader("Upload TM-Pilot Full-Download Excel :red[*]", type=["xlsx", "xls"])
 
 with col2:
-    pdf_file_1 = st.file_uploader("Upload Govt PDF 1", type=["pdf"])
+    pdf_file_1 = st.file_uploader("Upload Govt PDF 1 :red[*]", type=["pdf"])
 
 with col3:
     pdf_file_2 = st.file_uploader("Upload Govt PDF 2", type=["pdf"])
