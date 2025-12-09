@@ -14,7 +14,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("Trademark Similarity Exposer Dashboard")
+st.title("Trademark Similarity Exposer")
 st.caption("Govt Journal × TM-Pilot × Zoho — Similarity Detection Engine")
 
 st.markdown("---")
@@ -23,16 +23,16 @@ st.markdown("---")
 col1, col2, col3,col4 = st.columns(4)
 
 with col1:
-    pdf_file_1 = st.file_uploader("Upload Govt PDF 1", type=["pdf"])
+    tmpilot_file = st.file_uploader("Upload TM-Pilot Full-Download Excel :red[*]", type=["xlsx", "xls"])
 
 with col2:
-    pdf_file_2 = st.file_uploader("Upload Govt PDF 2", type=["pdf"])
+    pdf_file_1 = st.file_uploader("Upload Govt PDF 1", type=["pdf"])
 
 with col3:
-    pdf_file_3 = st.file_uploader("Upload Govt PDF 3 (Optional)", type=["pdf"])
+    pdf_file_2 = st.file_uploader("Upload Govt PDF 2", type=["pdf"])
 
 with col4:
-    tmpilot_file = st.file_uploader("Upload TM-Pilot Full-Download Excel", type=["xlsx", "xls"])
+    pdf_file_3 = st.file_uploader("Upload Govt PDF 3 (Optional)", type=["pdf"])
 
 st.markdown("---")
 
@@ -48,6 +48,9 @@ if "matches_df" not in st.session_state:
 # ---------------------------------------------------
 if start:
 
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.success('Cleared old files caches')
     # -----------------------
     # VALIDATION
     # -----------------------
@@ -63,13 +66,13 @@ if start:
     # TEMP DIRECTORY FOR PDFs
     # -----------------------
     temp_dir = tempfile.mkdtemp(prefix="simi_")
-
+    pdf_paths = []
     # Save PDF 1
-    temp_pdf1 = os.path.join(temp_dir, "part1.pdf")
-    with open(temp_pdf1, "wb") as f:
-        f.write(pdf_file_1.read())
-
-    pdf_paths = [temp_pdf1]
+    if pdf_file_1 is not None:
+        temp_pdf1 = os.path.join(temp_dir, "part1.pdf")
+        with open(temp_pdf1, "wb") as f:
+            f.write(pdf_file_1.read())
+        pdf_paths.append(temp_pdf1)
 
     # Save PDF 2 if uploaded
     if pdf_file_2 is not None:
@@ -77,6 +80,12 @@ if start:
         with open(temp_pdf2, "wb") as f:
             f.write(pdf_file_2.read())
         pdf_paths.append(temp_pdf2)
+
+    if pdf_file_3 is not None:
+        temp_pdf3 = os.path.join(temp_dir, "part3.pdf")
+        with open(temp_pdf3, "wb") as f:
+            f.write(pdf_file_3.read())
+        pdf_paths.append(temp_pdf3)
 
     # -----------------------
     # LOAD ZOHO DATA
@@ -93,6 +102,10 @@ if start:
         # Combine PDFs and parse with your existing scraper
         # You already use extract_govt_pdf('finalfull.pdf')
         # So here we merge manually and pass to your parser.
+
+    if not pdf_paths:
+        st.error("Please upload at least one Govt PDF.")
+        st.stop()
     with st.spinner("Parsing Govt PDFs..."):
         import fitz
 
@@ -124,22 +137,32 @@ if start:
     # PREP TM-PILOT DF
     # -----------------------
     with st.spinner("Loading TM-Pilot Excel..."):
-        tmpilot_df = prepare_tmpilot(tmpilot_file)
-        st.success(f"TM-Pilot DF Created — {len(tmpilot_df):,} rows")
+        if tmpilot_file.name.lower().endswith(".csv"):
+            tmpilot_df = prepare_tmpilot(tmpilot_file)
+            st.success(f"TM-Pilot DF Created — {len(tmpilot_df):,} rows")
+        else:
+            tmpilot_df = prepare_tmpilot(tmpilot_file)
 
     # -----------------------
     # FIND MISSING IN TM-PILOT
     # -----------------------
-    missing = govt_pdf_df[~govt_pdf_df["appno"].isin(tmpilot_df["appno"])]
+    # missing = govt_pdf_df[~govt_pdf_df["appno"].isin(tmpilot_df["appno"])]
     # if missing.shape[0] > 0:
     #     st.warning(f"TM-Pilot missed {len(missing)} records")
 
     # # Display & download missing records
     # st.markdown("### Missing Records (Govt Not Found in TM-Pilot)")
-    if missing.shape[0] == 0:
-        st.success("No records were missed by TM-Pilot.")
+    if tmpilot_df.shape[0] == govt_pdf_df.shape[0]:
+        missing = pd.DataFrame(columns=govt_pdf_df.columns)
+        st.success('No Missing values in TM-Pilot')
     else:
-        st.warning(f"TM-Pilot missed {len(missing)} records.")
+        missing = govt_pdf_df[~govt_pdf_df["appno"].isin(tmpilot_df["appno"])]
+    # if missing.shape[0] == 0:
+    #     st.success("No records were missed by TM-Pilot.")
+    # else:
+    #     st.warning(f"TM-Pilot missed {len(missing)} records.")
+    if not missing.empty:
+        st.warning(f"TM-Pilot missed {len(missing)} records")
         
         # Show a small preview
         st.dataframe(missing.head(50))
