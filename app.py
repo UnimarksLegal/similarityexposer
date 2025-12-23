@@ -104,6 +104,8 @@ if start:
                 tmp.close()
 
             temp_full_pdf = os.path.join(temp_dir, "finalgovt.pdf")
+            pdf = fitz.open(temp_full_pdf)
+            st.write("PDF pages:", pdf.page_count)
             merged.save(temp_full_pdf)
             merged.close()
 
