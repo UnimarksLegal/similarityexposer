@@ -65,27 +65,28 @@ if start:
     # -----------------------
     # TEMP DIRECTORY FOR PDFs
     # -----------------------
-    temp_dir = tempfile.mkdtemp(prefix="simi_")
-    pdf_paths = []
-    # Save PDF 1
-    if pdf_file_1 is not None:
-        temp_pdf1 = os.path.join(temp_dir, "part1.pdf")
-        with open(temp_pdf1, "wb") as f:
-            f.write(pdf_file_1.read())
-        pdf_paths.append(temp_pdf1)
+    # temp_dir = tempfile.mkdtemp(prefix="simi_")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        pdf_paths = []
+        # Save PDF 1
+        if pdf_file_1 is not None:
+            temp_pdf1 = os.path.join(temp_dir, "part1.pdf")
+            with open(temp_pdf1, "wb") as f:
+                f.write(pdf_file_1.read())
+            pdf_paths.append(temp_pdf1)
 
-    # Save PDF 2 if uploaded
-    if pdf_file_2 is not None:
-        temp_pdf2 = os.path.join(temp_dir, "part2.pdf")
-        with open(temp_pdf2, "wb") as f:
-            f.write(pdf_file_2.read())
-        pdf_paths.append(temp_pdf2)
+        # Save PDF 2 if uploaded
+        if pdf_file_2 is not None:
+            temp_pdf2 = os.path.join(temp_dir, "part2.pdf")
+            with open(temp_pdf2, "wb") as f:
+                f.write(pdf_file_2.read())
+            pdf_paths.append(temp_pdf2)
 
-    if pdf_file_3 is not None:
-        temp_pdf3 = os.path.join(temp_dir, "part3.pdf")
-        with open(temp_pdf3, "wb") as f:
-            f.write(pdf_file_3.read())
-        pdf_paths.append(temp_pdf3)
+        if pdf_file_3 is not None:
+            temp_pdf3 = os.path.join(temp_dir, "part3.pdf")
+            with open(temp_pdf3, "wb") as f:
+                f.write(pdf_file_3.read())
+            pdf_paths.append(temp_pdf3)
 
     # -----------------------
     # LOAD ZOHO DATA
