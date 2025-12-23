@@ -10,9 +10,9 @@ def clean_app_no(x):
     return m.group(1) if m else None
 
 
-records = []
+
 def extract_govt_pdf(pdffilename)->pd.DataFrame:
-    
+    records = []
     pdf = fitz.open(pdffilename)
     for page in pdf:
         width , height = page.rect.width, page.rect.height
