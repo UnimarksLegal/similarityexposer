@@ -19,7 +19,6 @@ st.caption("Govt Journal × TM-Pilot × Zoho — Similarity Detection Engine")
 
 st.markdown("---")
 
-# Upload widgets
 col1, col2, col3,col4 = st.columns(4)
 
 with col1:
@@ -38,22 +37,15 @@ st.markdown("---")
 
 start = st.button("Start Processing", type="primary")
 
-# Session state for results
 if "matches_df" not in st.session_state:
     st.session_state["matches_df"] = None
 
-
-# ---------------------------------------------------
-# START PIPELINE
-# ---------------------------------------------------
 if start:
 
     st.cache_data.clear()
     st.cache_resource.clear()
     st.success('Cleared old files caches')
-    # -----------------------
-    # VALIDATION
-    # -----------------------
+
     if pdf_file_1 is None:
         st.error("Please upload at least Govt PDF 1.")
         st.stop()
@@ -88,55 +80,41 @@ if start:
                 f.write(pdf_file_3.read())
             pdf_paths.append(temp_pdf3)
 
-    # -----------------------
-    # LOAD ZOHO DATA
-    # -----------------------
+
+        if not pdf_paths:
+            st.error("Please upload at least one Govt PDF.")
+            st.stop()
+        with st.spinner("Parsing Govt PDFs..."):
+            import fitz
+
+            merged = fitz.open()
+
+            for idx, p in enumerate(pdf_paths):
+                tmp = fitz.open(p)
+
+                # delete first 10 pages only from the FIRST journal
+                if idx == 0:
+                    try:
+                        tmp.delete_pages(from_page=0, to_page=9)
+                    except Exception:
+                        # if journal has <10 pages, just ignore
+                        pass
+
+                merged.insert_pdf(tmp)
+                tmp.close()
+
+            temp_full_pdf = os.path.join(temp_dir, "finalgovt.pdf")
+            merged.save(temp_full_pdf)
+            merged.close()
+
+            govt_pdf_df = extract_govt_pdf(temp_full_pdf)
+            st.success(f"Govt DF Created — {len(govt_pdf_df):,} rows")
+
     with st.spinner("Fetching Zoho data..."):
         brands = fetch_all_brands()
-        zoho_df = prepare_zoho(brands)  # your existing function
+        zoho_df = prepare_zoho(brands) 
         st.success(f"Zoho DF Created — {len(zoho_df):,} rows")
 
-    # -----------------------
-    # BUILD GOVT DF
-    # -----------------------
-
-        # Combine PDFs and parse with your existing scraper
-        # You already use extract_govt_pdf('finalfull.pdf')
-        # So here we merge manually and pass to your parser.
-
-    if not pdf_paths:
-        st.error("Please upload at least one Govt PDF.")
-        st.stop()
-    with st.spinner("Parsing Govt PDFs..."):
-        import fitz
-
-        merged = fitz.open()
-
-        for idx, p in enumerate(pdf_paths):
-            tmp = fitz.open(p)
-
-            # delete first 10 pages only from the FIRST journal
-            if idx == 0:
-                try:
-                    tmp.delete_pages(from_page=0, to_page=9)
-                except Exception:
-                    # if journal has <10 pages, just ignore
-                    pass
-
-            merged.insert_pdf(tmp)
-            tmp.close()
-
-        temp_full_pdf = os.path.join(temp_dir, "finalgovt.pdf")
-        merged.save(temp_full_pdf)
-        merged.close()
-
-        govt_pdf_df = extract_govt_pdf(temp_full_pdf)
-        st.success(f"Govt DF Created — {len(govt_pdf_df):,} rows")
-
-
-    # -----------------------
-    # PREP TM-PILOT DF
-    # -----------------------
     with st.spinner("Loading TM-Pilot Excel..."):
         if tmpilot_file.name.lower().endswith(".xlsx"):
             tmpilot_df = prepare_tmpilot(tmpilot_file)
@@ -144,24 +122,14 @@ if start:
         else:
             tmpilot_df = prepare_tmpilot(tmpilot_file)
 
-    # -----------------------
-    # FIND MISSING IN TM-PILOT
-    # -----------------------
-    # missing = govt_pdf_df[~govt_pdf_df["appno"].isin(tmpilot_df["appno"])]
-    # if missing.shape[0] > 0:
-    #     st.warning(f"TM-Pilot missed {len(missing)} records")
 
-    # # Display & download missing records
-    # st.markdown("### Missing Records (Govt Not Found in TM-Pilot)")
     if len(tmpilot_df) >= len(govt_pdf_df):
-        missing = govt_pdf_df[~govt_pdf_df["appno"].isin(tmpilot_df["appno"])]
-        # st.success('No Missing values in TM-Pilot')
+        missing = pd.DataFrame()
+        st.success("No Missing values in TM-Pilot")
     else:
         missing = govt_pdf_df[~govt_pdf_df["appno"].isin(tmpilot_df["appno"])]
-    # if missing.shape[0] == 0:
-    #     st.success("No records were missed by TM-Pilot.")
-    # else:
-    #     st.warning(f"TM-Pilot missed {len(missing)} records.")
+
+
     if not missing.empty:
         st.warning(f"TM-Pilot missed {len(missing)} records")
         
@@ -194,10 +162,18 @@ if start:
 
     # Merge TM-Pilot + Missing
     tmpilot = tmpilot_df.merge(govt_pdf_df[['appno', 'page_no']], on='appno', how='left')
-    concatenated = pd.concat([tmpilot, missing], ignore_index=True)
+    # concatenated = pd.concat([tmpilot, missing], ignore_index=True)
+
+
+    if not missing.empty:
+        concatenated = pd.concat([tmpilot, missing], ignore_index=True)
+    else:
+        concatenated = tmpilot.copy()
+
     concatenated["norm_tmp"] = concatenated["tmAppliedFor"].apply(clean_brand)
     concatenated = concatenated[concatenated["norm_tmp"] != ""]
     concatenated["class"] = concatenated["class"].apply(clean_class)
+
 
     # -----------------------
     # RUN SIMILARITY ENGINE
@@ -243,20 +219,20 @@ if start:
                         "govt_app_no": c_app_no,
                         "govt_brand": c_raw_name,
                         "zoho_brand": zz["zoho_tm"],
-                        "zoho_Application_no": zz.get("zoho_appno"),
                         "govt_class": cls,
                         "zoho_class": zz["zohoclass"],
                         "zoho_client": zz.get("our_client"),
-                        "Govt_company_name": c_company,
                         "zoho_company1": zz.get("zoho_cmp1"),
                         "zoho_company2": zz.get("zoho_cmp2"),
+                        "zoho_Application_no": zz.get("zoho_appno"),
+                        "Compared_zoho_name": zz["norm_tm"],
+                        "Compared_govt_name": c_name,
+                        "Govt_company_name": c_company,
+                        "score": score,
+                        "Journal_Date": c_jd,
                         "Govt_Goods": c_guds,
                         "Zoho_goods": zz.get("zoho_goods"),
-                        "Journal_Date": c_jd,
                         "Govt_pdf_pageno": c_pageno,
-                        "Normalized_zoho_name": zz["norm_tm"],
-                        "Normalized_govt_name": c_name,
-                        "score": score,
                     })
 
         matches_df = pd.DataFrame(results).sort_values(by="score", ascending=False)
@@ -264,14 +240,6 @@ if start:
 
         st.success(f"Process Completed — {len(matches_df):,} matches flagged")
 
-    # -----------------------
-    # CLEAN TEMP FILES
-    # -----------------------
-    for file in os.listdir(temp_dir):
-        try:
-            os.remove(os.path.join(temp_dir, file))
-        except:
-            pass
 
 from datetime import datetime
 
