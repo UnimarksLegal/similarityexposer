@@ -189,6 +189,7 @@ def get_access_token() -> str:
         "refresh_token": REFRESH_TOKEN,
     }
     resp = requests.post(url, data=data, timeout=30)
+    print(f"DEBUG ZOHO RESPONSE: {resp.json()}")
     resp.raise_for_status()
     return resp.json()["access_token"]
 
