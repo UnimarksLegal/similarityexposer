@@ -232,6 +232,21 @@ def fetch_all_brands():
 # ZOHO
 def prepare_zoho(brand)->pd.DataFrame:
     zoho = pd.DataFrame(brand)
+    def flatten(v):
+        if isinstance(v, dict):
+            return v.get("display_value") or v.get("zc_display_value") or ""
+        if isinstance(v, list):
+            return " ".join(str(flatten(x)) for x in v)
+        return v
+
+    for c in zoho.columns:
+        zoho[c] = zoho[c].map(flatten)
+
+    before = len(zoho)
+    zoho['Current_Status'] = zoho['Current_Status'].fillna('Unknown').astype(str).str.strip().str.title()
+    zoho = zoho[~zoho['Current_Status'].isin(['Withdrawn', 'Refused', 'Abandoned'])]
+    print(f"status filter removed {before - len(zoho)} of {before}")
+    print(zoho['Current_Status'].value_counts())
     zoho['Current_Status'] = zoho['Current_Status'].fillna('Unknown')
     zoho = zoho[~zoho['Current_Status'].isin(['Withdrawn','Refused','Abandoned'])]
     zoho = zoho[['Application_No','Class','Trademark','Company_Name1','Company_Name','Goods_38_Services','Client_Name','Journal_Date']]
@@ -240,8 +255,12 @@ def prepare_zoho(brand)->pd.DataFrame:
                                 'Goods_38_Services':'zoho_goods','Client_Name':'our_client','Journal_Date':'JournalDate'})
     zoho['zoho_tm'] = zoho['zoho_tm'].fillna('NULLs')
     zoho = zoho[~zoho['zoho_tm'].isin(['LOGO','DEVICE','(DEVICE)','(LOGO)','( DEVICE )','(DEVICE OF FINGER IMPRESSION)'])]
-    zoho["norm_tm"] = zoho["zoho_tm"].apply(clean_brand)
-    zoho = zoho[zoho["norm_tm"] != ""]
+    # zoho["norm_tm"] = zoho["zoho_tm"].apply(clean_brand)
+    # zoho = zoho[zoho["norm_tm"] != ""]
+    from matching import normalise
+    zoho[["norm_core", "norm_full"]] = zoho["zoho_tm"].apply(lambda x: pd.Series(normalise(x)))
+    zoho = zoho[zoho["norm_core"] != ""]
+    zoho = zoho.drop_duplicates(subset=["zoho_appno", "zoho_tm", "zohoclass"])
     zoho['zohoclass'] = zoho['zohoclass'].apply(clean_class)
     # zoho['zohoclass'] = zoho['zohoclass'].astype(str)
     print('Zoho df Created')
