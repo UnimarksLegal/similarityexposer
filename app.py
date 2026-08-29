@@ -1,35 +1,56 @@
-import streamlit as st ,  pandas as pd , tempfile,os
+import os
+import tempfile
 from io import BytesIO
 from datetime import datetime
-from prepareeve import extract_govt_pdf, prepare_tmpilot, clean_brand, clean_class,fetch_all_brands,prepare_zoho
- 
-from rapidfuzz import fuzz, process
-import numpy as np
+from matching import normalise, run_similarity
+import streamlit as st
+import pandas as pd
+
+from prepareeve import (
+    extract_govt_pdf,
+    prepare_tmpilot,
+    clean_class,
+    fetch_all_brands,
+    prepare_zoho,
+)
+# from matching import normalise
+# from compare import run_comparison
+
 
 # ---------------------------------------------------
-# Streamlit Page Settings
+# PAGE SETTINGS
 # ---------------------------------------------------
-st.set_page_config(
-    page_title="Trademark Similarity Exposer",
-    layout="wide"
-)
+st.set_page_config(page_title="Trademark Similarity Exposer", layout="wide")
 
 st.title("Trademark Similarity Exposer")
 st.caption("Govt Journal × TM-Pilot × Zoho — Similarity Detection Engine")
-
 st.markdown("---")
 
-col1, col2, col3,col4 = st.columns(4)
+
+# ---------------------------------------------------
+# SESSION STATE
+# ---------------------------------------------------
+# for key in ("matches_df", "cmp_bytes", "dropped_count", "journal_date"):
+#     if key not in st.session_state:
+#         st.session_state[key] = None
+for key in ("matches_df", "journal_date"):
+    if key not in st.session_state:
+        st.session_state[key] = None
+
+
+# ---------------------------------------------------
+# UPLOADS
+# ---------------------------------------------------
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    tmpilot_file = st.file_uploader("Upload TM-Pilot Full-Download Excel :red[*]", type=["xlsx", "xls"])
-
+    tmpilot_file = st.file_uploader(
+        "Upload TM-Pilot Full-Download Excel :red[*]", type=["xlsx", "xls"]
+    )
 with col2:
     pdf_file_1 = st.file_uploader("Upload Govt PDF 1 :red[*]", type=["pdf"])
-
 with col3:
     pdf_file_2 = st.file_uploader("Upload Govt PDF 2", type=["pdf"])
-
 with col4:
     pdf_file_3 = st.file_uploader("Upload Govt PDF 3 (Optional)", type=["pdf"])
 
@@ -37,69 +58,49 @@ st.markdown("---")
 
 start = st.button("Start Processing", type="primary")
 
-if "matches_df" not in st.session_state:
-    st.session_state["matches_df"] = None
 
+# ---------------------------------------------------
+# PROCESSING
+# ---------------------------------------------------
 if start:
 
     st.cache_data.clear()
     st.cache_resource.clear()
-    st.success('Cleared old files caches')
+
+    if tmpilot_file is None:
+        st.error("Please upload the TM-Pilot Excel.")
+        st.stop()
 
     if pdf_file_1 is None:
         st.error("Please upload at least Govt PDF 1.")
         st.stop()
 
-    if tmpilot_file is None:
-        st.error("Please upload TM-Pilot Excel.")
-        st.stop()
-
-    # -----------------------
-    # TEMP DIRECTORY FOR PDFs
-    # -----------------------
-    # temp_dir = tempfile.mkdtemp(prefix="simi_")
+    # -----------------------------------------------
+    # 1. PARSE GOVT PDFs
+    # -----------------------------------------------
     with tempfile.TemporaryDirectory() as temp_dir:
         pdf_paths = []
-        # Save PDF 1
-        if pdf_file_1 is not None:
-            temp_pdf1 = os.path.join(temp_dir, "part1.pdf")
-            with open(temp_pdf1, "wb") as f:
-                f.write(pdf_file_1.read())
-            pdf_paths.append(temp_pdf1)
 
-        # Save PDF 2 if uploaded
-        if pdf_file_2 is not None:
-            temp_pdf2 = os.path.join(temp_dir, "part2.pdf")
-            with open(temp_pdf2, "wb") as f:
-                f.write(pdf_file_2.read())
-            pdf_paths.append(temp_pdf2)
+        for idx, upload in enumerate([pdf_file_1, pdf_file_2, pdf_file_3], start=1):
+            if upload is None:
+                continue
+            path = os.path.join(temp_dir, f"part{idx}.pdf")
+            with open(path, "wb") as fh:
+                fh.write(upload.read())
+            pdf_paths.append(path)
 
-        if pdf_file_3 is not None:
-            temp_pdf3 = os.path.join(temp_dir, "part3.pdf")
-            with open(temp_pdf3, "wb") as f:
-                f.write(pdf_file_3.read())
-            pdf_paths.append(temp_pdf3)
-
-
-        if not pdf_paths:
-            st.error("Please upload at least one Govt PDF.")
-            st.stop()
         with st.spinner("Parsing Govt PDFs..."):
             import fitz
 
             merged = fitz.open()
-
-            for idx, p in enumerate(pdf_paths):
-                tmp = fitz.open(p)
-
-                # delete first 10 pages only from the FIRST journal
+            for idx, path in enumerate(pdf_paths):
+                tmp = fitz.open(path)
+                # strip the 10-page preamble from the first journal only
                 if idx == 0:
                     try:
                         tmp.delete_pages(from_page=0, to_page=9)
                     except Exception:
-                        # if journal has <10 pages, just ignore
                         pass
-
                 merged.insert_pdf(tmp)
                 tmp.close()
 
@@ -108,48 +109,45 @@ if start:
             merged.close()
 
             govt_pdf_df = extract_govt_pdf(temp_full_pdf)
-            st.success(f"Govt DF Created — {len(govt_pdf_df):,} rows")
 
+        st.success(f"Govt DF created — {len(govt_pdf_df):,} rows")
+
+    # -----------------------------------------------
+    # 2. FETCH ZOHO
+    # -----------------------------------------------
     with st.spinner("Fetching Zoho data..."):
         brands = fetch_all_brands()
-        zoho_df = prepare_zoho(brands) 
-        st.success(f"Zoho DF Created — {len(zoho_df):,} rows")
+        zoho_df = prepare_zoho(brands)
+    st.success(f"Zoho DF created — {len(zoho_df):,} rows")
 
+    # -----------------------------------------------
+    # 3. LOAD TM-PILOT
+    # -----------------------------------------------
     with st.spinner("Loading TM-Pilot Excel..."):
-        if tmpilot_file.name.lower().endswith(".xlsx"):
-            tmpilot_df = prepare_tmpilot(tmpilot_file)
-            st.success(f"TM-Pilot DF Created — {len(tmpilot_df):,} rows")
-        else:
-            tmpilot_df = prepare_tmpilot(tmpilot_file)
+        tmpilot_df = prepare_tmpilot(tmpilot_file)
+    st.success(f"TM-Pilot DF created — {len(tmpilot_df):,} rows")
 
-
+    # -----------------------------------------------
+    # 4. FIND RECORDS TM-PILOT MISSED
+    # -----------------------------------------------
     if len(tmpilot_df) >= len(govt_pdf_df):
         missing = pd.DataFrame()
-        st.success("No Missing values in TM-Pilot")
+        st.success("No missing values in TM-Pilot")
     else:
         missing = govt_pdf_df[~govt_pdf_df["appno"].isin(tmpilot_df["appno"])]
 
-
     if not missing.empty:
         st.warning(f"TM-Pilot missed {len(missing)} records")
-        
-        # Show a small preview
         st.dataframe(missing.head(50))
 
-        # Build memory Excel
         missing_buf = BytesIO()
         with pd.ExcelWriter(missing_buf, engine="xlsxwriter") as writer:
             missing.to_excel(writer, index=False, sheet_name="Missing")
-
-            # Format header row
-            workbook = writer.book
             worksheet = writer.sheets["Missing"]
-            header_fmt = workbook.add_format({"bold": True})
+            header_fmt = writer.book.add_format({"bold": True})
             for col_idx, col_name in enumerate(missing.columns):
                 worksheet.write(0, col_idx, col_name, header_fmt)
-
             worksheet.freeze_panes(1, 0)
-
         missing_buf.seek(0)
 
         st.download_button(
@@ -159,100 +157,59 @@ if start:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-
-    # Merge TM-Pilot + Missing
-    tmpilot = tmpilot_df.merge(govt_pdf_df[['appno', 'page_no']], on='appno', how='left')
-    # concatenated = pd.concat([tmpilot, missing], ignore_index=True)
-
+    # -----------------------------------------------
+    # 5. BUILD THE COMPARISON SET
+    # -----------------------------------------------
+    page_lookup = (
+        govt_pdf_df[["appno", "page_no"]]
+        .dropna(subset=["appno"])
+        .drop_duplicates(subset="appno", keep="first")
+    )
+    tmpilot = tmpilot_df.merge(page_lookup, on="appno", how="left")
 
     if not missing.empty:
         concatenated = pd.concat([tmpilot, missing], ignore_index=True)
     else:
         concatenated = tmpilot.copy()
 
-    concatenated["norm_tmp"] = concatenated["tmAppliedFor"].apply(clean_brand)
-    concatenated = concatenated[concatenated["norm_tmp"] != ""]
+    concatenated[["norm_core", "norm_full"]] = concatenated["tmAppliedFor"].apply(
+        lambda x: pd.Series(normalise(x))
+    )
+    concatenated = concatenated[concatenated["norm_core"] != ""]
     concatenated["class"] = concatenated["class"].apply(clean_class)
 
+    # -----------------------------------------------
+    # 6. JOURNAL DATE (for the output filename)
+    # -----------------------------------------------
+    journal_date = datetime.now().strftime("%d-%m-%Y")
+    try:
+        jd_raw = concatenated["JournalDate"].dropna().iloc[0]
+        journal_date = pd.to_datetime(jd_raw, format="%d/%m/%Y").strftime("%d-%m-%Y")
+    except Exception:
+        pass
+    st.session_state["journal_date"] = journal_date
 
-    # -----------------------
-    # RUN SIMILARITY ENGINE
-    # -----------------------
-    with st.spinner("Running Similarity Engine..."):
+    # # -----------------------------------------------
+    # # 7. RUN BOTH ENGINES
+    # # -----------------------------------------------
+    # with st.spinner("Running both engines for comparison..."):
+    #     cmp_buf, matches_df, dropped = run_similarity(concatenated, zoho_df) #run_comparison(concatenated, zoho_df)
 
-        limitt = 4
-        thresh_score = 85
-        results = []
+    # st.session_state["matches_df"] = matches_df
+    # st.session_state["cmp_bytes"] = cmp_buf.getvalue()
+    # st.session_state["dropped_count"] = len(dropped)
 
-        for cls, con in concatenated.groupby("class"):
-            zoho_brands = zoho_df[zoho_df["zohoclass"] == cls]
+    # st.success(f"New engine flagged {len(matches_df):,} matches")
 
-            if zoho_brands.empty:
-                continue
+        # -----------------------------------------------
+    # 7. RUN SIMILARITY ENGINE
+    # -----------------------------------------------
+    with st.spinner("Running similarity engine..."):
+        matches_df = run_similarity(concatenated, zoho_df)
 
-            choices = dict(zip(zoho_brands.index, zoho_brands["norm_tm"]))
+    st.session_state["matches_df"] = matches_df
+    st.success(f"Flagged {len(matches_df):,} matches")
 
-            for _, crow in con.iterrows():
-                c_name = crow["norm_tmp"]
-                c_app_no = crow["appno"]
-                c_raw_name = crow["tmAppliedFor"]
-                c_company = crow["buisnessName"]
-                c_pageno = crow["page_no"]
-                c_jd = crow["JournalDate"]
-                c_guds = crow["goodsAndSerice"]
-
-                matches = process.extract(
-                    c_name,
-                    choices,
-                    scorer=fuzz.token_set_ratio,
-                    limit=limitt,
-                    score_cutoff=thresh_score
-                )
-
-                for _, score, zoho_idx in matches:
-                    if not isinstance(zoho_idx, (int, np.integer)):
-                        continue
-
-                    zz = zoho_brands.loc[zoho_idx]
-
-                    results.append({
-                        "govt_app_no": c_app_no,
-                        "govt_brand": c_raw_name,
-                        "zoho_brand": zz["zoho_tm"],
-                        "govt_class": cls,
-                        "zoho_class": zz["zohoclass"],
-                        "zoho_client": zz.get("our_client"),
-                        "zoho_company1": zz.get("zoho_cmp1"),
-                        "zoho_company2": zz.get("zoho_cmp2"),
-                        "zoho_Application_no": zz.get("zoho_appno"),
-                        "Compared_zoho_name": zz["norm_tm"],
-                        "Compared_govt_name": c_name,
-                        "Govt_company_name": c_company,
-                        "score": score,
-                        "Journal_Date": c_jd,
-                        "Govt_Goods": c_guds,
-                        "Zoho_goods": zz.get("zoho_goods"),
-                        "Govt_pdf_pageno": c_pageno,
-                    })
-
-        matches_df = pd.DataFrame(results).sort_values(by="score", ascending=False)
-        st.session_state["matches_df"] = matches_df
-
-        st.success(f"Process Completed — {len(matches_df):,} matches flagged")
-
-
-from datetime import datetime
-
-# define a default first (e.g., run date)
-journal_date = datetime.now().strftime("%d-%m-%Y")
-
-# then try to override from data
-try:
-    jd_raw = concatenated["JournalDate"].dropna().iloc[0]
-    journal_date = pd.to_datetime(jd_raw, format="%d/%m/%Y").strftime("%d-%m-%Y")
-except Exception:
-    # silently keep default if anything goes wrong
-    pass
 
 # ---------------------------------------------------
 # RESULTS SECTION
@@ -263,32 +220,52 @@ st.subheader("Output")
 matches_df = st.session_state.get("matches_df")
 
 if matches_df is not None and not matches_df.empty:
+
+    # left, right = st.columns(2)
+    # with left:
+    #     st.write("**Match types**")
+    #     st.write(matches_df["match_type"].value_counts())
+    # with right:
+    #     st.write("**Old engine comparison**")
+    #     st.write(f"{st.session_state['dropped_count']:,} matches no longer flagged")
+    st.write("**Match types**")
+    st.write(matches_df["match_type"].value_counts())
     # st.dataframe(matches_df.head(50))
 
-    # Build styled Excel in memory
+    # main report
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
-        sheet_name = "Matches"
-        matches_df.to_excel(writer, index=False, sheet_name=sheet_name)
-
-        workbook  = writer.book
-        worksheet = writer.sheets[sheet_name]
-
-        # Bold header format
-        header_format = workbook.add_format({"bold": True})
+        matches_df.to_excel(writer, index=False, sheet_name="Matches")
+        worksheet = writer.sheets["Matches"]
+        header_format = writer.book.add_format({"bold": True})
         for col_idx, col_name in enumerate(matches_df.columns):
             worksheet.write(0, col_idx, col_name, header_format)
-
-        # Freeze header row
         worksheet.freeze_panes(1, 0)
-
     buf.seek(0)
 
+    jd = st.session_state.get("journal_date") or datetime.now().strftime("%d-%m-%Y")
+
+    # dl1, dl2 = st.columns(2)
+    # with dl1:
+    #     st.download_button(
+    #         "Download Similarity Report",
+    #         data=buf,
+    #         file_name=f"Similarity_Report_for_Jnrl_{jd}.xlsx",
+    #         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    #     )
+    # with dl2:
+    #     if st.session_state.get("cmp_bytes"):
+    #         st.download_button(
+    #             "Download OLD vs NEW comparison",
+    #             data=st.session_state["cmp_bytes"],
+    #             file_name=f"Engine_Comparison_{jd}.xlsx",
+    #             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    #         )
     st.download_button(
-        "Download Complete Excel",
+        "Download Similarity Report",
         data=buf,
-        file_name=f"Similarity_Report_for_Jnrl_{journal_date}.xlsx",
+        file_name=f"Similarity_Report_for_Jnrl_{jd}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 else:
-    st.info("Upload files & click Start to begin.")
+    st.info("Upload files and click Start Processing to begin.")
